@@ -1,0 +1,72 @@
+#=================================================
+# https://github.com/iflyelf/zabbix-plugin
+# License: MIT
+# Author: iflyelf
+# Blog: https://www.xiaonuo.live
+#=================================================
+
+name: 插件编译检查
+
+# 触发条件：main 分支推送、Pull Request、手动触发
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# 同一分支仅保留最新一次构建：快速连续提交时自动取消旧构建，
+# 避免多个构建并发堆积、互相拖慢。
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+# 权限
+permissions:
+  contents: read
+
+# 任务集
+jobs:
+  build:
+    name: 编译插件（${{ matrix.plugin }}）
+    # 选择虚拟环境
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin:
+          - address
+          - conntrack
+          - hardware
+          - login
+          - ports
+          - tcpconnect
+
+    # 运行步骤
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.plugin }}/go.mod
+          cache-dependency-path: ${{ matrix.plugin }}/go.sum
+
+      - name: 下载 Go 模块依赖
+        working-directory: ${{ matrix.plugin }}
+        run: go mod download
+
+      - name: 静态检查
+        working-directory: ${{ matrix.plugin }}
+        run: go vet ./...
+
+      - name: 编译插件
+        working-directory: ${{ matrix.plugin }}
+        run: make -j$(nproc)
+
+      - name: 验证编译产物
+        working-directory: ${{ matrix.plugin }}
+        run: test -x "zabbix-agent2-plugin-${{ matrix.plugin }}"
