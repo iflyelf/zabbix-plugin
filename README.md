@@ -1,5 +1,7 @@
 # zabbix_plugin
 
+[![文档一致性检查](https://github.com/iflyelf/zabbix-plugin/actions/workflows/docs-check.yml/badge.svg)](https://github.com/iflyelf/zabbix-plugin/actions/workflows/docs-check.yml)
+
 Zabbix Agent 2（8.0）可加载插件集合，包含网卡地址发现、conntrack 状态、硬件信息、登录失败、端口/进程和 TCP 连接状态监控。
 
 ## 插件列表
