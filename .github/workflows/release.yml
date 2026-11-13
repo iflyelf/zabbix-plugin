@@ -187,3 +187,25 @@ jobs:
             - 插件编译检查（6 个插件矩阵）：通过
           files: |
             dist/*
+
+  cleanup:
+    name: 清理旧工作流
+    # 发布结束后执行，失败时也清理
+    needs: publish
+    if: always()
+    runs-on: ubuntu-latest
+
+    # 清理旧工作流需要写权限
+    permissions:
+      actions: write
+      contents: read
+
+    # 运行步骤
+    steps:
+      - name: 删除旧的GitHub-workflow
+        if: always()
+        uses: Mattraks/delete-workflow-runs@main
+        with:
+          repository: ${{ github.repository }}
+          retain_days: 1
+          keep_minimum_runs: 3    #保留多少个workflow不删除

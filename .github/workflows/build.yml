@@ -70,3 +70,25 @@ jobs:
       - name: 验证编译产物
         working-directory: ${{ matrix.plugin }}
         run: test -x "zabbix-agent2-plugin-${{ matrix.plugin }}"
+
+  cleanup:
+    name: 清理旧工作流
+    # 所有插件构建结束后执行，失败时也清理
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+
+    # 清理旧工作流需要写权限
+    permissions:
+      actions: write
+      contents: read
+
+    # 运行步骤
+    steps:
+      - name: 删除旧的GitHub-workflow
+        if: always()
+        uses: Mattraks/delete-workflow-runs@main
+        with:
+          repository: ${{ github.repository }}
+          retain_days: 1
+          keep_minimum_runs: 3    #保留多少个workflow不删除
