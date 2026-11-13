@@ -2,6 +2,7 @@
 
 [![文档一致性检查](https://github.com/iflyelf/zabbix-plugin/actions/workflows/docs-check.yml/badge.svg)](https://github.com/iflyelf/zabbix-plugin/actions/workflows/docs-check.yml)
 [![插件编译检查](https://github.com/iflyelf/zabbix-plugin/actions/workflows/build.yml/badge.svg)](https://github.com/iflyelf/zabbix-plugin/actions/workflows/build.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/iflyelf/zabbix-plugin)](https://github.com/iflyelf/zabbix-plugin/releases/latest)
 
 Zabbix Agent 2（8.0）可加载插件集合，包含网卡地址发现、conntrack 状态、硬件信息、登录失败、端口/进程和 TCP 连接状态监控。
 
@@ -59,6 +60,27 @@ python3 scripts/check_markdown_fences.py
 ```
 
 脚本失败时返回非 0 退出码，可直接用于 CI 或 Git pre-commit。
+
+## 发布新版本
+
+发布流程由 `.github/workflows/release.yml` 自动完成：
+
+1. 修改各插件 `main.go` 中的版本号（`PLUGIN_VERSION_MAJOR/MINOR/PATCH`）；
+2. 提交并推送到 `main`；
+3. 创建并推送版本标签：
+
+```bash
+git tag -a v8.0.1 -m "v8.0.1"
+git push origin v8.0.1
+```
+
+4. GitHub Actions 自动执行：
+   - 构建 6 个插件的 Linux amd64 二进制；
+   - 构建 Hardware 插件的 Windows amd64 二进制；
+   - 生成 `SHA256SUMS`；
+   - 创建 GitHub Release 并上传全部资产，自动标记为最新版本。
+
+也可以在 Actions 页面手动触发“构建并发布 Release”，输入已存在的标签（例如 `v8.0.1`）。
 
 ## 目录结构
 

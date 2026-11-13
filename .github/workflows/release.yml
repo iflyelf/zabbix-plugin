@@ -1,0 +1,189 @@
+#=================================================
+# https://github.com/iflyelf/zabbix-plugin
+# License: MIT
+# Author: iflyelf
+# Blog: https://www.xiaonuo.live
+#=================================================
+
+name: 构建并发布 Release
+
+# 触发条件：推送 v* 标签时自动构建并发布，或手动指定标签
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的版本标签（例如 v8.0.1，标签必须已存在）'
+        required: true
+        type: string
+
+# 同一标签只允许一个发布任务，避免重复上传资产
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+# 权限
+permissions:
+  contents: read
+
+# 任务集
+jobs:
+  build:
+    name: 构建插件（${{ matrix.plugin }} / ${{ matrix.goos }}-${{ matrix.goarch }}）
+    # 选择虚拟环境
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - plugin: address
+            goos: linux
+            goarch: amd64
+            ext: ''
+          - plugin: conntrack
+            goos: linux
+            goarch: amd64
+            ext: ''
+          - plugin: hardware
+            goos: linux
+            goarch: amd64
+            ext: ''
+          - plugin: login
+            goos: linux
+            goarch: amd64
+            ext: ''
+          - plugin: ports
+            goos: linux
+            goarch: amd64
+            ext: ''
+          - plugin: tcpconnect
+            goos: linux
+            goarch: amd64
+            ext: ''
+          - plugin: hardware
+            goos: windows
+            goarch: amd64
+            ext: '.exe'
+
+    # 运行步骤
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: 设置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.plugin }}/go.mod
+          cache-dependency-path: ${{ matrix.plugin }}/go.sum
+
+      - name: 下载 Go 模块依赖
+        working-directory: ${{ matrix.plugin }}
+        run: go mod download
+
+      - name: 编译插件
+        working-directory: ${{ matrix.plugin }}
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" \
+            go build -trimpath \
+            -o "dist/zabbix-agent2-plugin-${{ matrix.plugin }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" \
+            .
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-${{ matrix.plugin }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ matrix.plugin }}/dist/*
+          if-no-files-found: error
+
+  publish:
+    name: 发布 Release
+    # 所有插件构建成功后再发布
+    needs: build
+    runs-on: ubuntu-latest
+
+    # 发布 Release 需要写权限
+    permissions:
+      contents: write
+
+    # 运行步骤
+    steps:
+      - name: 下载全部构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 生成 SHA256 校验文件
+        working-directory: dist
+        run: sha256sum * | sort -k2 > SHA256SUMS
+
+      - name: 发布 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: ${{ inputs.tag || github.ref_name }}
+          draft: false
+          prerelease: false
+          make_latest: true
+          overwrite_files: true
+          body: |
+            ## Zabbix Agent 2 插件集合 ${{ inputs.tag || github.ref_name }}
+
+            本版本由 GitHub Actions 自动构建并发布，包含 6 个 Zabbix Agent 2 可加载插件。
+
+            ### 插件列表
+
+            | 插件 | 主要监控项 |
+            |---|---|
+            | Address | `address.discovery` |
+            | ConntrackStatus | `conntrack.info`、`conntrack.number` |
+            | Hardware | `hardware.*` 共 18 项 |
+            | Login | `login.failed` |
+            | Ports | `ports.*.discovery`、`pid_status`、`http_status` |
+            | TcpStatus | `tcp.connect.status` |
+
+            ### 构建信息
+
+            - 插件版本：`${{ inputs.tag || github.ref_name }}`
+            - 目标版本：Zabbix Agent 2 `8.0`
+            - SDK：`golang.zabbix.com/sdk v1.2.2-0.20260904100819-caedd9e13ed3`
+            - Go：由 `actions/setup-go` 根据各插件 `go.mod` 自动选择
+            - 平台：Linux `amd64`（全部插件）、Windows `amd64`（Hardware）
+
+            ### Release 资产
+
+            - `zabbix-agent2-plugin-*-linux-amd64`：Linux amd64 插件二进制
+            - `zabbix-agent2-plugin-hardware-windows-amd64.exe`：Windows amd64 Hardware 插件
+            - `SHA256SUMS`：SHA256 校验文件
+
+            ### 安装
+
+            ```bash
+            # 校验下载文件
+            sha256sum -c SHA256SUMS
+
+            # 部署插件
+            cp zabbix-agent2-plugin-<插件名>-linux-amd64 \
+              /usr/local/zabbix/sbin/zabbix-agent2-plugin/zabbix-agent2-plugin-<插件名>
+            chmod +x /usr/local/zabbix/sbin/zabbix-agent2-plugin/zabbix-agent2-plugin-<插件名>
+            ```
+
+            将对应 `.conf` 放入 Zabbix Agent 2 插件配置目录，并通过 `Include=` 加载。
+
+            ### 文档
+
+            - 项目说明：README.md
+            - 各插件 README 与详细编写文档位于对应插件目录
+            - 文档检查：`./scripts/check_all.sh`
+
+            ### 质量检查
+
+            - 文档一致性检查：通过
+            - 插件编译检查（6 个插件矩阵）：通过
+          files: |
+            dist/*
